@@ -1,8 +1,6 @@
 // Remove & recompile when complete:
 #![allow(unused)]
 
-use bitarray::BitArray;
-
 const GRID_LENGTH: u32 = 3;
 const GRID_SIZE: u32 = GRID_LENGTH * GRID_LENGTH;
 
