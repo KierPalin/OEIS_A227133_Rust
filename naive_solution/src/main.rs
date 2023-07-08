@@ -36,29 +36,28 @@ const MAX_CHUNK_SIZE: usize = 32000000000; // 4 gigabytes in bits.
 //-----------------------
 
 /**
- * While generation the permutations of a popcount is relatively fast - even for large values & popcount distances,
- * There are memory limitations associated with storing that many integers,
- * Furthermore it is not possible to parallelise these generators directly.
- *
- * Hence the generator is used to get a chunk of candidate permutations,
- * These are then
- */
-
-/**
  * Check all permutations of popcount
  * Recurse to lower popcount if none found.
  */
 fn search(squares: Vec<u128>, popcount: u32) -> u128 {
+    // Build the generator that creates a Vector of gospers_hack permutations for this popcount:
     let mut generator: Unfold<i128, fn(i128) -> i128> =
         Unfold::new(gospers_hack, (1 << popcount) - 1);
 
+    // Gosper's hack is sequential, but grid checking can be parallelised since each permutation is indepedent.
+    // Additionally the memory required to store the permuations from Gosper's hack can be in the gigabytes
+    // This means that Gosper's hack permutations can be generated in chunks:
+
+    // Maximum number of candidates that can be taken at once from the generator:
     let maximum_number_of_candiates: i128 = (MAX_CHUNK_SIZE / 128) as i128;
     let mut permutation_qty: i128 = number_of_permutation_with_repititions(popcount) as i128;
     let mut chunk: i128 = min(permutation_qty, maximum_number_of_candiates);
 
     let mut result: Option<u128> = Option::None;
 
+    // Search all of the permutations, one chunk at a time:
     while (permutation_qty > 0) {
+        // Generate the candidates:
         let candidates: Vec<u128> = generator
             .by_ref()
             .take(chunk as usize)
@@ -68,11 +67,13 @@ fn search(squares: Vec<u128>, popcount: u32) -> u128 {
         // Return or recurse to the lexographically prior permutations:
         match check_candidates(candidates, &squares) {
             Some(x) => {
+                // Solution found:
                 result = Some(x);
                 permutation_qty = 0;
             }
 
             nil => {
+                // Move onto the next chunk:
                 permutation_qty -= chunk;
                 chunk = min(permutation_qty, maximum_number_of_candiates);
             }
@@ -126,7 +127,6 @@ fn number_of_permutation_with_repititions(popcount: u32) -> u128 {
  * Initial input is (1 << popcount) - 1
  */
 fn gospers_hack(permutation: i128) -> i128 {
-    //println!("GH: {}", permutation);
     let c: i128 = permutation & -permutation;
     let r = permutation + c;
 
