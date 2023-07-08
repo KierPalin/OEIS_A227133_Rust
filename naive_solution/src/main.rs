@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 /**
  * Author: Kier Palin
  * The unoptimised naive solution to the problem
@@ -17,7 +19,7 @@ extern crate itertools;
 use itertools::iproduct; // used by get_squares.
 use unfold::Unfold; // used for generating candidate grids via Gosper's hack.
 
-const GRID_LENGTH: u32 = 3;
+const GRID_LENGTH: u32 = 6;
 const GRID_SIZE: u32 = GRID_LENGTH * GRID_LENGTH;
 
 //-----------------------
@@ -32,14 +34,9 @@ fn search(squares: Vec<u128>, popcount: u32) -> u128 {
     let permutation_qty: usize = number_of_permutation_with_repititions(popcount) as usize;
 
     // gospers_hack uses the prior output as input, hence it can be modelled as an unfold operation:
-    let candidate_grids: Vec<u128> = Unfold::new(gospers_hack, (1 << popcount) - 1)
+    let result = Unfold::new(gospers_hack, (1 << popcount) - 1)
         .take(permutation_qty)
         .map(|permutation| permutation as u128)
-        .collect();
-
-    // Find the first grid that contains 0 squares:
-    let result = candidate_grids
-        .into_iter()
         .find(|permutation| !grid_contains_squares(*permutation, &squares));
 
     // Return or recurse to the lexographically prior permutations - the lesser popcount:
@@ -68,9 +65,9 @@ fn grid_contains_squares(grid: u128, squares: &[u128]) -> bool {
  * Neccessary since the permutations are generated via unfolding,
  * which is an infinite structure.
  */
-fn number_of_permutation_with_repititions(popcount: u32) -> u32 {
-    let popcount_factorial: u32 = ((popcount + 1)..=GRID_SIZE).product();
-    let difference_factorial: u32 = (1..=(GRID_SIZE - popcount)).product();
+fn number_of_permutation_with_repititions(popcount: u32) -> u128 {
+    let popcount_factorial: u128 = ((popcount + 1)..=GRID_SIZE).map(|x| x as u128).product();
+    let difference_factorial: u128 = (1..=(GRID_SIZE - popcount)).map(|x| x as u128).product();
     popcount_factorial / difference_factorial
 }
 
@@ -140,7 +137,8 @@ fn square_within_bounds(index: u32, scale: u32) -> bool {
 
 fn main() {
     let squares: Vec<u128> = get_squares();
-    let solution = search(squares, GRID_SIZE - GRID_LENGTH + 1);
+    let initial_popcount: u32 = GRID_SIZE - GRID_LENGTH + 1;
+    let solution = search(squares, initial_popcount);
 
     println!(
         "Solution: {:0width$b}",
