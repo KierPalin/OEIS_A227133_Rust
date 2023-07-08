@@ -14,17 +14,34 @@
  * The grid contains that square & hence is invalid.
  *
  */
-extern crate itertools;
+extern crate rayon;
+use rayon::prelude::*;
 
+extern crate itertools;
 use itertools::iproduct; // used by get_squares.
+
+extern crate unfold;
 use unfold::Unfold; // used for generating candidate grids via Gosper's hack.
 
-const GRID_LENGTH: u32 = 6;
+use std::cmp::min;
+use std::time::Instant;
+
+const GRID_LENGTH: u32 = 4;
 const GRID_SIZE: u32 = GRID_LENGTH * GRID_LENGTH;
+const MAX_CHUNK_SIZE: usize = 32000000000; // 4 gigabytes in bits.
 
 //-----------------------
 // Grid Search Functions:
 //-----------------------
+
+/**
+ * While generation the permutations of a popcount is relatively fast - even for large values & popcount distances,
+ * There are memory limitations associated with storing that many integers,
+ * Furthermore it is not possible to parallelise these generators directly.
+ *
+ * Hence the generator is used to get a chunk of candidate permutations,
+ * These are then
+ */
 
 /**
  * Check all permutations of popcount
@@ -32,18 +49,28 @@ const GRID_SIZE: u32 = GRID_LENGTH * GRID_LENGTH;
  */
 fn search(squares: Vec<u128>, popcount: u32) -> u128 {
     let permutation_qty: usize = number_of_permutation_with_repititions(popcount) as usize;
+    let candidate_chunk_size = min(permutation_qty * 128, MAX_CHUNK_SIZE);
 
     // gospers_hack uses the prior output as input, hence it can be modelled as an unfold operation:
-    let result = Unfold::new(gospers_hack, (1 << popcount) - 1)
+    let gospers_hack_generator = Unfold::new(gospers_hack, (1 << popcount) - 1);
+
+    let candidates = gospers_hack_generator
         .take(permutation_qty)
         .map(|permutation| permutation as u128)
-        .find(|permutation| !grid_contains_squares(*permutation, &squares));
+        .collect();
 
     // Return or recurse to the lexographically prior permutations - the lesser popcount:
-    match result {
+    match check_candidates(&squares, candidates) {
         Some(x) => x,
-        None => search(squares, popcount - 1),
+        nil => search(squares, popcount - 1),
     }
+}
+
+fn check_candidates(squares: &[u128], candidates: Vec<u128>) -> Option<u128> {
+    candidates
+        .par_iter()
+        .find_any(|&&permutation| !grid_contains_squares(permutation, squares))
+        .copied()
 }
 
 fn grid_contains_squares(grid: u128, squares: &[u128]) -> bool {
@@ -135,13 +162,21 @@ fn square_within_bounds(index: u32, scale: u32) -> bool {
     (index + (scale - 1) + GRID_LENGTH * (scale - 1)) <= GRID_SIZE
 }
 
+//---------------
+// Main Function:
+//---------------
 fn main() {
+    let now = Instant::now();
+
     let squares: Vec<u128> = get_squares();
     let initial_popcount: u32 = GRID_SIZE - GRID_LENGTH + 1;
     let solution = search(squares, initial_popcount);
 
     println!(
-        "Solution: {:0width$b}",
+        "F({}) = {} in {:.2?}.\nSolution: {:0width$b}",
+        GRID_LENGTH,
+        solution.count_ones(),
+        now.elapsed(),
         solution,
         width = GRID_SIZE as usize
     );
