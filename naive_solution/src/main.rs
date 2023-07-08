@@ -23,10 +23,11 @@ use itertools::iproduct; // used by get_squares.
 extern crate unfold;
 use unfold::Unfold; // used for generating candidate grids via Gosper's hack.
 
+use std::char::MAX;
 use std::cmp::min;
 use std::time::Instant;
 
-const GRID_LENGTH: u32 = 4;
+const GRID_LENGTH: u32 = 6;
 const GRID_SIZE: u32 = GRID_LENGTH * GRID_LENGTH;
 const MAX_CHUNK_SIZE: usize = 32000000000; // 4 gigabytes in bits.
 
@@ -48,31 +49,51 @@ const MAX_CHUNK_SIZE: usize = 32000000000; // 4 gigabytes in bits.
  * Recurse to lower popcount if none found.
  */
 fn search(squares: Vec<u128>, popcount: u32) -> u128 {
-    let permutation_qty: usize = number_of_permutation_with_repititions(popcount) as usize;
-    let candidate_chunk_size = min(permutation_qty * 128, MAX_CHUNK_SIZE);
+    let mut generator: Unfold<i128, fn(i128) -> i128> =
+        Unfold::new(gospers_hack, (1 << popcount) - 1);
 
-    // gospers_hack uses the prior output as input, hence it can be modelled as an unfold operation:
-    let gospers_hack_generator = Unfold::new(gospers_hack, (1 << popcount) - 1);
+    let maximum_number_of_candiates: i128 = (MAX_CHUNK_SIZE / 128) as i128;
+    let mut permutation_qty: i128 = number_of_permutation_with_repititions(popcount) as i128;
+    let mut chunk: i128 = min(permutation_qty, maximum_number_of_candiates);
 
-    let candidates = gospers_hack_generator
-        .take(permutation_qty)
-        .map(|permutation| permutation as u128)
-        .collect();
+    let mut result: Option<u128> = Option::None;
 
-    // Return or recurse to the lexographically prior permutations - the lesser popcount:
-    match check_candidates(&squares, candidates) {
+    while (permutation_qty > 0) {
+        let candidates: Vec<u128> = generator
+            .by_ref()
+            .take(chunk as usize)
+            .map(|permutation| permutation as u128)
+            .collect();
+
+        // Return or recurse to the lexographically prior permutations:
+        match check_candidates(candidates, &squares) {
+            Some(x) => {
+                result = Some(x);
+                permutation_qty = 0;
+            }
+
+            nil => {
+                permutation_qty -= chunk;
+                chunk = min(permutation_qty, maximum_number_of_candiates);
+            }
+        }
+    }
+
+    // Return or recurse to the lexographically prior permutations:
+    match result {
         Some(x) => x,
         nil => search(squares, popcount - 1),
     }
 }
 
-fn check_candidates(squares: &[u128], candidates: Vec<u128>) -> Option<u128> {
+fn check_candidates(candidates: Vec<u128>, squares: &[u128]) -> Option<u128> {
     candidates
         .par_iter()
         .find_any(|&&permutation| !grid_contains_squares(permutation, squares))
         .copied()
 }
 
+// Isolated for the purposes of parallelism:
 fn grid_contains_squares(grid: u128, squares: &[u128]) -> bool {
     for square in squares {
         if (grid & square) == *square {
@@ -105,6 +126,7 @@ fn number_of_permutation_with_repititions(popcount: u32) -> u128 {
  * Initial input is (1 << popcount) - 1
  */
 fn gospers_hack(permutation: i128) -> i128 {
+    //println!("GH: {}", permutation);
     let c: i128 = permutation & -permutation;
     let r = permutation + c;
 
@@ -131,7 +153,7 @@ fn get_squares() -> Vec<u128> {
  * A square is an integer of entirely zeroes, except for 4 set bits,
  * These 4 set bits are the corners of the square.
  */
-fn construct_square(top_left_corner_index: u32, scale: u32) -> u128 {
+const fn construct_square(top_left_corner_index: u32, scale: u32) -> u128 {
     let square: u128 = u128::pow(2, top_left_corner_index - 1)
         + u128::pow(2, top_left_corner_index - 1 + scale - 1)
         + u128::pow(2, top_left_corner_index - 1 + (GRID_LENGTH * (scale - 1)))
@@ -169,8 +191,7 @@ fn main() {
     let now = Instant::now();
 
     let squares: Vec<u128> = get_squares();
-    let initial_popcount: u32 = GRID_SIZE - GRID_LENGTH + 1;
-    let solution = search(squares, initial_popcount);
+    let solution = search(squares, GRID_SIZE - GRID_LENGTH + 1);
 
     println!(
         "F({}) = {} in {:.2?}.\nSolution: {:0width$b}",
