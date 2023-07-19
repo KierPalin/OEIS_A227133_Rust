@@ -1,70 +1,111 @@
 // Remove & recompile when complete:
 #![allow(unused)]
 
-use crate::GRID_LENGTH;
-use crate::GRID_SIZE;
-
 extern crate itertools;
-use itertools::iproduct;
 
-// Generate all of the squares possible for this:
-pub fn get_squares() -> Vec<u32> {
-    let squares: Vec<u32> = iproduct!(1..=GRID_SIZE, 2..=GRID_LENGTH)
+use itertools::iproduct; // used by get_squares.
+
+extern crate unfold;
+use unfold::Unfold; // used for generating candidate grids via Gosper's hack.
+
+use crate::{DEPENDENCY_MAPS, SQUARES, SQUARES_AS_BITLIST};
+
+pub const GRID_LENGTH: i8 = 6;
+pub const GRID_SIZE: i8 = GRID_LENGTH * GRID_LENGTH;
+pub const SOLUTION_IS_POSSIBLE_DEPTH: u8 = (GRID_SIZE - GRID_LENGTH + 1) as u8;
+
+//-----------------------------
+// Square Generation Functions:
+//-----------------------------
+
+/**
+ * The possible squares in the grid can be pre-calculated
+ * These can then be checked against a candidate_grid via bitwise anding
+ */
+pub fn get_squares() -> Vec<u128> {
+    let grid_length = GRID_LENGTH as i32;
+    let grid_size = GRID_SIZE as i32;
+    let squares: Vec<u128> = iproduct!(1..=grid_size, 2..=grid_length)
         .filter(|(index, scale)| valid_square(*index, *scale))
         .map(|(index, scale)| construct_square(index, scale))
         .collect();
     squares
 }
 
-pub fn valid_square(index: u32, scale: u32) -> bool {
+/**
+ * A square is an integer of entirely zeroes, except for 4 set bits,
+ * These 4 set bits are the corners of the square.
+ */
+fn construct_square(top_left_corner_index: i32, scale: i32) -> u128 {
+    let tl_corner: u32 = top_left_corner_index.try_into().unwrap();
+    let scale: u32 = scale.try_into().unwrap();
+    let grid_length = GRID_LENGTH as u32;
+
+    let square: u128 = u128::pow(2, (tl_corner - 1))
+        + u128::pow(2, (tl_corner - 1 + scale - 1))
+        + u128::pow(2, (tl_corner - 1 + (grid_length * (scale - 1))))
+        + u128::pow(2, (tl_corner - 1 + (grid_length * (scale - 1)) + scale - 1));
+    square
+}
+
+//------------------------------------
+// Square Generation Helper Functions:
+//------------------------------------
+
+pub fn valid_square(index: i32, scale: i32) -> bool {
     square_within_bounds(index, scale) & !edge_is_on_different_row(index, scale)
 }
 
-pub fn grid_contains_any_squares(grid: u32, squares: Vec<u32>) -> bool {
-    for square in squares {
-        if ((grid & square) == square) {
+fn get_current_row(index: i32) -> i32 {
+    let grid_length = GRID_LENGTH as i32;
+    ((index - 1) + grid_length - ((index - 1) % grid_length)) / grid_length
+}
+
+fn edge_is_on_different_row(index: i32, scale: i32) -> bool {
+    (get_current_row(index + scale - 1) - get_current_row(index)) > 0
+}
+
+fn square_within_bounds(index: i32, scale: i32) -> bool {
+    let grid_length = GRID_LENGTH as i32;
+    let grid_size = GRID_SIZE as i32;
+    (index + (scale - 1) + grid_length * (scale - 1)) <= grid_size
+}
+
+//------------------------
+// Grid Checking Function:
+//------------------------
+
+pub fn grid_contains_squares(grid: u128) -> bool {
+    for square in SQUARES.iter() {
+        if (grid & *square) == *square {
             return true;
         }
     }
     false
 }
 
-pub fn get_dependency_maps(squares: &[u32]) -> [u32; GRID_SIZE as usize] {
-    let bit_masks: Vec<u32> = (0..GRID_SIZE).map(|n| 1 << n).collect(); // All bits are clear, except nth bit is set
+//---------------------------------
+// Miscellaneous Utility Functions:
+//---------------------------------
 
-    let mut dependency_maps: [u32; GRID_SIZE as usize] = [0; GRID_SIZE as usize];
-
-    // A single u32 of all the squares that have a set nth bit, Bitwise ORd together:
-    for n in 0..(GRID_SIZE as usize) {
-        dependency_maps[n] = squares
-            .iter()
-            .filter(|&square| (square & bit_masks[n]) == bit_masks[n]) // Is the nth bit set?
-            .fold(0, |acc, square| acc | square); // Accumulate them via Bitwise OR
-    }
-
-    dependency_maps
+pub fn get_bitlist(input: u128) -> Vec<i8> {
+    (0..GRID_SIZE).map(|x| ((input >> x) & 1) as i8).collect()
 }
 
-fn construct_square(top_left_corner_index: u32, scale: u32) -> u32 {
-    let square: u32 = u32::pow(2, top_left_corner_index - 1)
-        + u32::pow(2, top_left_corner_index - 1 + scale - 1)
-        + u32::pow(2, top_left_corner_index - 1 + (GRID_LENGTH * (scale - 1)))
-        + u32::pow(
-            2,
-            top_left_corner_index - 1 + (GRID_LENGTH * (scale - 1)) + scale - 1,
-        );
-
-    square
+pub fn get_squares_as_bitlist() -> Vec<Vec<i8>> {
+    SQUARES.iter().map(|&square| get_bitlist(square)).collect()
 }
 
-fn get_current_row(index: u32) -> u32 {
-    ((index - 1) + GRID_LENGTH - ((index - 1) % GRID_LENGTH)) / GRID_LENGTH
+pub fn square_in_grid(grid: &[i8], square: &Vec<i8>) -> bool {
+    grid.iter()
+        .zip(square)
+        .map(|(&grid_bit, square_bit)| grid_bit & square_bit)
+        .collect::<Vec<i8>>()
+        == *square
 }
 
-fn edge_is_on_different_row(index: u32, scale: u32) -> bool {
-    (get_current_row(index + scale - 1) - get_current_row(index)) > 0
-}
-
-fn square_within_bounds(index: u32, scale: u32) -> bool {
-    (index + (scale - 1) + GRID_LENGTH * (scale - 1)) <= GRID_SIZE
+pub fn number_of_permutation_with_repititions(popcount: i8) -> u128 {
+    let popcount_factorial: u128 = ((popcount + 1)..=GRID_SIZE).map(|x| x as u128).product();
+    let difference_factorial: u128 = (1..=(GRID_SIZE - popcount)).map(|x| x as u128).product();
+    popcount_factorial / difference_factorial
 }

@@ -1,118 +1,54 @@
 // Remove & recompile when complete:
 #![allow(unused)]
 
-const GRID_LENGTH: u32 = 3;
-const GRID_SIZE: u32 = GRID_LENGTH * GRID_LENGTH;
+use itertools::Itertools;
+use lazy_static::lazy_static;
+
+use std::{
+    collections::{HashSet, VecDeque},
+    time::Instant,
+};
+
+mod state;
+use state::*;
 
 mod square_utils;
+use square_utils::*;
 
-/**
- * This is a struct to store pre-calculated values that are neccessary for the search
- *
- */
-#[derive(Debug)]
-struct GridSolver {
-    squares: Vec<u32>, // These binary values are entirely zeros, except for 4 set bits, in the corners of the square.
-    two_to_the_power_n_map: Vec<u32>, // Since the values binaries, this enables fast setting & clearing of bits.
-    dependency_maps: [u32; GRID_SIZE as usize], // Binary values of how the corners in squares are dependent on one another; applied to heatmaps.
+mod hca_utils;
+use hca_utils::*;
+
+lazy_static! {
+    static ref SQUARES: Vec<u128> = square_utils::get_squares();
+    static ref SQUARES_AS_BITLIST: Vec<Vec<i8>> = square_utils::get_squares_as_bitlist();
+    static ref DEPENDENCY_MAPS: Vec<Vec<i8>> = hca_utils::get_dependency_maps();
 }
 
-impl GridSolver {
-    pub fn new() -> GridSolver {
-        let squares = square_utils::get_squares();
-        let dependency_maps = square_utils::get_dependency_maps(&squares);
+fn search(state_queue: &mut VecDeque<State>, current_depth: u8) -> State {
+    let mut next_state_queue: VecDeque<State> = VecDeque::new();
+    let mut current_state: State;
 
-        GridSolver {
-            squares,
-            two_to_the_power_n_map: (0..GRID_SIZE).map(|n| 1 << n).collect(),
-            dependency_maps,
+    while (!state_queue.is_empty()) {
+        current_state = state_queue.pop_front().unwrap();
+
+        // Valid Solution:
+        if (current_depth <= SOLUTION_IS_POSSIBLE_DEPTH && !current_state.contains_squares()) {
+            println!("Solution found. Queue size is {}", state_queue.len());
+            return current_state;
+        }
+        // Not valid, or not at depth to search yet; just add child states:
+        else {
+            for child_state in current_state.get_children() {
+                next_state_queue.push_back(child_state);
+            }
         }
     }
-
-    // A heatmap is an encoding of the grid, where each cell contains the number of squares that cell is a part of.
-    // The hottest cells are the ones that would be most efficiently set to 0.
-    // Multiple cells must be set to
-
-    // 111
-    // 111
-    // 111
-
-    // 222
-    // 242
-    // 222
-
-    // 111
-    // 111
-    // 111
-
-    // 111
-    // 131
-    // 111
-
-    // 111
-    // 101
-    // 111
-
-    // 011
-    // 121
-    // 111
-
-    // 11111
-    // 11111
-    // 11111
-    // 11111
-    // 11111
-
-    // 4,4,4,4,4,
-    // 4,6,6,6,4,
-    // 4,6,8,6,4,
-    // 4,6,6,6,4,
-    // 4,4,4,4,4
-
-    // 11111
-    // 11111
-    // 11011
-    // 11111
-    // 11111
-
-    // 33333
-    // 35553
-    // 35753
-    // 35553
-    // 33333
-
-    // 11100
-    // 11111
-    // 11100
-    // 01010
-    // 01001
-
-    // 22233
-    // 24442
-    // 24653
-    // 34543
-    // 34334
-
-    // 11111
-    // 10111
-    // 11011
-    // 11111
-    // 11111
-
-    pub fn search() -> u32 {
-        GRID_LENGTH
-    }
-
-    // Subtract the dependency map from the heatmap, unset the nth bit:
-    fn apply_dependency_map(&self, heat_map: u32, n: u32) -> u32 {
-        ((heat_map - self.dependency_maps[n as usize]) & !(1 << n))
-    }
+    search(&mut next_state_queue, current_depth - 1)
 }
 
 fn main() {
-    let grid_solver = GridSolver::new();
-
-    for dependency_map in grid_solver.dependency_maps {
-        println!("\n {:09b}", dependency_map);
-    }
+    let now = Instant::now();
+    let mut state_queue: VecDeque<State> = VecDeque::from(vec![State::default()]);
+    search(&mut state_queue, GRID_SIZE as u8).print_grid();
+    println!("Took {:?} to solve.", now.elapsed());
 }
