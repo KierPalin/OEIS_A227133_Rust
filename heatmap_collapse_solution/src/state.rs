@@ -1,15 +1,14 @@
 #![allow(unused)]
 
+use crate::{hca_utils, square_utils, DEPENDENCY_MAPS, GRID_LENGTH, GRID_SIZE, SQUARES_AS_BITLIST};
+
+use itertools::Itertools;
 use std::collections::VecDeque;
 use std::str;
 
-use itertools::Itertools;
-
-use crate::{hca_utils, square_utils, DEPENDENCY_MAPS, GRID_LENGTH, GRID_SIZE, SQUARES_AS_BITLIST};
-
 pub struct State {
-    pub heatmap: Vec<i8>,
-    pub heatmap_peaks: Vec<usize>,
+    heatmap: Vec<i8>,
+    heatmap_peaks: Vec<usize>,
     depth: i8,
 }
 
@@ -22,6 +21,10 @@ impl State {
         }
     }
 
+    /**
+     * Apply the dependency map to this state.
+     * Where each dependency map corresponds to a heatmap_peak
+     */
     pub fn get_children(&mut self) -> Vec<State> {
         let mut children: Vec<State> = Vec::new();
 
@@ -34,10 +37,11 @@ impl State {
         children
     }
 
+    /**
+     * Does the grid of this state contain a square?
+     */
     pub fn contains_squares(&self) -> bool {
         let grid = self.as_grid();
-
-        // println!("Checking for squares on grid: {:?}", grid);
 
         for square in SQUARES_AS_BITLIST.iter() {
             if (square_utils::square_in_grid(&grid, square)) {
@@ -47,27 +51,15 @@ impl State {
         false
     }
 
-    //------------------------------------
-    // Heatmap Selection Policy Functions:
-    //------------------------------------
+    /**
+     * Generate a new heatmap by applying the nth dependency_map.
+     * The nth element of the heatmap is set to the -1 sentinel value.
+     * Cells with a value less than or equal to 0 are not updated.
+     * Otherwise, the dependency_map is simply elementwise subtracted from the self.heatmap.
+     */
     fn apply_dependency_map(&self, n: usize) -> Vec<i8> {
         let dependency_map = &DEPENDENCY_MAPS[n];
-
-        // println!(
-        //     "Applying dependency map: {:?} to {:?}, via n = {}:",
-        //     dependency_map, self.heatmap, n
-        // );
-
         let mut new_heatmap: Vec<i8> = self
-            // .heatmap
-            // .clone()
-            // .iter()
-            // .filter(|&&heatmap_element| heatmap_element != 0)
-            // .zip(dependency_map)
-            // .map(|(&heatmap_element, &dependency_map_element)| {
-            //     heatmap_element - dependency_map_element
-            // })
-            // .collect();
             .heatmap
             .clone()
             .iter()
@@ -80,15 +72,15 @@ impl State {
                 }
             })
             .collect();
-
-        // println!("NewHeatmap: {:?}\n", new_heatmap);
         new_heatmap[n] = -1;
-
-        // println!("With n set to -1: {:?}\n\n", new_heatmap);
 
         new_heatmap
     }
 
+    /**
+     * Convert self.heatmap into a grid.
+     * All values <= 0 are set to 0; otherwise remain 1.
+     */
     fn as_grid(&self) -> Vec<i8> {
         self.heatmap
             .clone()
@@ -97,13 +89,15 @@ impl State {
             .collect_vec()
     }
 
+    /**
+     * Display the current state & its popcount.
+     */
     pub fn print_grid(&self) {
         let grid = self.as_grid();
         println!(
-            "F({}) = {}, with peaks: {:?}",
+            "F({}) = {}.",
             GRID_LENGTH,
             grid.iter().filter(|&n| *n == 1).count(),
-            self.heatmap_peaks
         );
 
         for row in grid.chunks(GRID_LENGTH as usize) {
@@ -115,16 +109,19 @@ impl State {
 
 impl Default for State {
     fn default() -> Self {
-        let heatmap = hca_utils::get_heatmap();
+        let heatmap = hca_utils::get_initial_heatmap();
         let heatmap_peaks = hca_utils::get_peaks(&heatmap);
         Self {
             heatmap,
             heatmap_peaks,
-            depth: square_utils::GRID_SIZE,
+            depth: GRID_SIZE,
         }
     }
 }
 
+/**
+ * Print out the heatmap.
+ */
 impl std::fmt::Display for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut formatted_heatmap = "".to_owned();

@@ -1,26 +1,19 @@
-// Remove & recompile when complete:
-#![allow(unused)]
+use crate::{GRID_LENGTH, GRID_SIZE, SQUARES};
 
 extern crate itertools;
-
 use itertools::iproduct; // used by get_squares.
 
 extern crate unfold;
-use unfold::Unfold; // used for generating candidate grids via Gosper's hack.
-
-use crate::{DEPENDENCY_MAPS, SQUARES, SQUARES_AS_BITLIST};
-
-pub const GRID_LENGTH: i8 = 6;
-pub const GRID_SIZE: i8 = GRID_LENGTH * GRID_LENGTH;
-pub const SOLUTION_IS_POSSIBLE_DEPTH: u8 = (GRID_SIZE - GRID_LENGTH + 1) as u8;
 
 //-----------------------------
 // Square Generation Functions:
 //-----------------------------
 
 /**
- * The possible squares in the grid can be pre-calculated
- * These can then be checked against a candidate_grid via bitwise anding
+ * All possible squares in the grid can be pre-calculated.
+ * These can then be checked against a candidate_grid via bitwise anding.
+ *
+ * Stored lazily: see SQUARES in main.
  */
 pub fn get_squares() -> Vec<u128> {
     let grid_length = GRID_LENGTH as i32;
@@ -41,10 +34,10 @@ fn construct_square(top_left_corner_index: i32, scale: i32) -> u128 {
     let scale: u32 = scale.try_into().unwrap();
     let grid_length = GRID_LENGTH as u32;
 
-    let square: u128 = u128::pow(2, (tl_corner - 1))
-        + u128::pow(2, (tl_corner - 1 + scale - 1))
-        + u128::pow(2, (tl_corner - 1 + (grid_length * (scale - 1))))
-        + u128::pow(2, (tl_corner - 1 + (grid_length * (scale - 1)) + scale - 1));
+    let square: u128 = u128::pow(2, tl_corner - 1)
+        + u128::pow(2, tl_corner - 1 + scale - 1)
+        + u128::pow(2, tl_corner - 1 + (grid_length * (scale - 1)))
+        + u128::pow(2, tl_corner - 1 + (grid_length * (scale - 1)) + scale - 1);
     square
 }
 
@@ -75,13 +68,16 @@ fn square_within_bounds(index: i32, scale: i32) -> bool {
 // Grid Checking Function:
 //------------------------
 
-pub fn grid_contains_squares(grid: u128) -> bool {
-    for square in SQUARES.iter() {
-        if (grid & *square) == *square {
-            return true;
-        }
-    }
-    false
+/**
+ * Bitwise and the grid & the square.
+ * If the result is equal to the square then the grid neccessarily contains that square.
+ */
+pub fn square_in_grid(grid: &[i8], square: &Vec<i8>) -> bool {
+    grid.iter()
+        .zip(square)
+        .map(|(&grid_bit, square_bit)| grid_bit & square_bit)
+        .collect::<Vec<i8>>()
+        == *square
 }
 
 //---------------------------------
@@ -94,18 +90,4 @@ pub fn get_bitlist(input: u128) -> Vec<i8> {
 
 pub fn get_squares_as_bitlist() -> Vec<Vec<i8>> {
     SQUARES.iter().map(|&square| get_bitlist(square)).collect()
-}
-
-pub fn square_in_grid(grid: &[i8], square: &Vec<i8>) -> bool {
-    grid.iter()
-        .zip(square)
-        .map(|(&grid_bit, square_bit)| grid_bit & square_bit)
-        .collect::<Vec<i8>>()
-        == *square
-}
-
-pub fn number_of_permutation_with_repititions(popcount: i8) -> u128 {
-    let popcount_factorial: u128 = ((popcount + 1)..=GRID_SIZE).map(|x| x as u128).product();
-    let difference_factorial: u128 = (1..=(GRID_SIZE - popcount)).map(|x| x as u128).product();
-    popcount_factorial / difference_factorial
 }
